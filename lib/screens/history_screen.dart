@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../utils/theme.dart';
 import '../widgets/common_widgets.dart';
 import '../services/supabase_service.dart';
+import '../services/pdf_service.dart';
 import '../models/models.dart';
 import 'result_screen.dart';
 
@@ -18,6 +19,7 @@ class _HistoryListScreenState extends State<HistoryListScreen>
     with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   List<PredictionRecord> _history = [];
   bool _isLoading = true;
+  bool _isGeneratingPdf = false;
 
   @override
   bool get wantKeepAlive => false;
@@ -88,6 +90,26 @@ class _HistoryListScreenState extends State<HistoryListScreen>
     _load();
   }
 
+  Future<void> _downloadPdf() async {
+    if (_history.isEmpty || _isGeneratingPdf) return;
+    setState(() => _isGeneratingPdf = true);
+    try {
+      await PdfService.generateAndShareHistoryPdf(context, _history);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Failed to generate PDF. Please try again.'),
+          backgroundColor: context.c.danger,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isGeneratingPdf = false);
+    }
+  }
+
   void _showDeleteDialog(PredictionRecord record) {
     final c = context.c;
     showDialog(
@@ -134,9 +156,55 @@ class _HistoryListScreenState extends State<HistoryListScreen>
           children: [
             const SizedBox(height: 20),
             FadeInDown(
-              child: const SectionHeader(
-                title: 'Prediction History',
-                subtitle: 'All your past CVD checks',
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Expanded(
+                    child: SectionHeader(
+                      title: 'Prediction History',
+                      subtitle: 'All your past CVD checks',
+                    ),
+                  ),
+                  // ── Download PDF button ──────────────────────
+                  Tooltip(
+                    message: 'Download all results as PDF',
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: _history.isEmpty
+                            ? context.c.surfaceLight
+                            : context.c.primary.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _history.isEmpty
+                              ? context.c.cardBorder
+                              : context.c.primary.withOpacity(0.35),
+                        ),
+                      ),
+                      child: _isGeneratingPdf
+                          ? Padding(
+                              padding: const EdgeInsets.all(10),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: context.c.primary,
+                              ),
+                            )
+                          : IconButton(
+                              padding: EdgeInsets.zero,
+                              onPressed: _history.isEmpty ? null : _downloadPdf,
+                              icon: Icon(
+                                Icons.download_rounded,
+                                color: _history.isEmpty
+                                    ? context.c.textMuted
+                                    : context.c.primary,
+                                size: 20,
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 20),
